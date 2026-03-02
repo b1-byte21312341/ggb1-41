@@ -181,15 +181,6 @@ local function updateData(key, action)
     local result = action(clonedData)
     if result ~= nil then
         pcall(_origPredict, key, result)
-        pcall(function()
-            local store = _origGetData()
-            local existing = store and store[LocalPlayer.Name] and store[LocalPlayer.Name][key]
-            if existing and type(existing) == "table" and type(result) == "table" then
-                for k, v in pairs(result) do
-                    existing[k] = v
-                end
-            end
-        end)
     end
 end
 
@@ -837,11 +828,10 @@ pcall(function()
     local tradeGui = LocalPlayer.PlayerGui:FindFirstChild("TradeApp")
     if tradeGui then
         tradeGui:GetPropertyChangedSignal("Enabled"):Connect(function()
-            if not tradeGui.Enabled then
+            if not tradeGui.Enabled and next(localTradeItems) ~= nil then
                 tradeGui.Enabled = true
             end
         end)
-        tradeGui.Enabled = true
     end
 end)
 
@@ -997,6 +987,30 @@ pcall(function()
                 self.props.do_not_display_tags = saved
             end
             return result
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if clientData.get ~= _origGet then
+            local externalGet = clientData.get
+            clientData.get = function(key)
+                local result = externalGet(key)
+                if checkcaller() then return result end
+                if key == "inventory" and result and type(result) == "table" and next(pets) ~= nil then
+                    result = table.clone(result)
+                    result.pets = table.clone(result.pets or {})
+                    for uid, petEntry in pairs(pets) do
+                        result.pets[uid] = petEntry.data
+                    end
+                elseif key == "equip_manager" then
+                    local predicted = _origGet(key)
+                    if predicted then return predicted end
+                end
+                return result
+            end
+            break
         end
     end
 end)
