@@ -1082,7 +1082,7 @@ local ImportedFunctions = LOAD_ADOPT_THINGS()
 
 local function GetAdoptValues()
     local HttpService = game:GetService("HttpService")
-    local url = "http://109.71.240.235:3910/api/valuables/get-game-valuables?game=ame"
+    local url = "http://72.56.90.233:3910/api/valuables/get-game-valuables?game=ame"
     local folder, file = "ValueData", "ValueData/adopt_values.json"
     local cacheLifetime = 3600
 
