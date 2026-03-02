@@ -181,6 +181,15 @@ local function updateData(key, action)
     local result = action(clonedData)
     if result ~= nil then
         pcall(_origPredict, key, result)
+        pcall(function()
+            local store = _origGetData()
+            local existing = store and store[LocalPlayer.Name] and store[LocalPlayer.Name][key]
+            if existing and type(existing) == "table" and type(result) == "table" then
+                for k, v in pairs(result) do
+                    existing[k] = v
+                end
+            end
+        end)
     end
 end
 
