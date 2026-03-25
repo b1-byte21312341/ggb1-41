@@ -1,0 +1,1264 @@
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+
+local AnimalsShared = require(RS.Shared.Animals)
+local AnimalsData = require(RS.Datas.Animals)
+local MutationsData = require(RS.Datas.Mutations)
+local RaritiesData = require(RS.Datas.Rarities)
+local TraitsData = require(RS.Datas.Traits)
+local NumberUtils = require(RS.Utils.NumberUtils)
+
+local player = Players.LocalPlayer
+local pgui = player.PlayerGui
+
+local old = pgui:FindFirstChild("XScriptsSAB")
+if old then old:Destroy() end
+
+local function new(class, props)
+    local inst = Instance.new(class)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then inst[k] = v end
+    end
+    if props.Parent then inst.Parent = props.Parent end
+    return inst
+end
+
+local brainrotList = {}
+for name, data in pairs(AnimalsData) do
+    if not name:find("Lucky Block") then
+        table.insert(brainrotList, {Name = name, Rarity = data.Rarity, Display = data.DisplayName or name})
+    end
+end
+table.sort(brainrotList, function(a, b)
+    local wa = RaritiesData[a.Rarity] and RaritiesData[a.Rarity].Weight or 0
+    local wb = RaritiesData[b.Rarity] and RaritiesData[b.Rarity].Weight or 0
+    if wa ~= wb then return wa > wb end
+    return a.Name < b.Name
+end)
+
+local mutList = {"Normal"}
+for name in pairs(MutationsData) do table.insert(mutList, name) end
+table.sort(mutList, function(a, b)
+    if a == "Normal" then return b ~= "Normal" end
+    if b == "Normal" then return false end
+    return a < b
+end)
+
+local traitList = {}
+for name in pairs(TraitsData) do table.insert(traitList, name) end
+table.sort(traitList)
+
+local sel = {brainrot = nil, mutation = "Normal", traits = {}, side = "Other"}
+local visuals = {}
+local visualCount = 0
+local baseSlotsOriginal = {}
+local bBtns, mBtns = {}, {}
+
+local randConfig = {
+    brainrots = {},
+    mutations = {},
+    traits = {},
+    keybindYour = Enum.KeyCode.T,
+    keybindOther = Enum.KeyCode.Y,
+    keybindReadyYour = Enum.KeyCode.G,
+    keybindReadyOther = Enum.KeyCode.H
+}
+local waitingForKeybind = nil
+local rBtns, rMBtns, rTBtns = {}, {}, {}
+local randCountLabels = {}
+
+local screen = new("ScreenGui", {
+    Name = "XScriptsSAB", ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = pgui
+})
+
+local main = new("Frame", {
+    Name = "Main", Size = UDim2.fromOffset(300, 600),
+    Position = UDim2.new(1, -310, 0.5, -300),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 22), BorderSizePixel = 0, Parent = screen
+})
+new("UICorner", {CornerRadius = UDim.new(0, 10), Parent = main})
+new("UIStroke", {Color = Color3.fromRGB(80, 40, 120), Thickness = 1.5, Parent = main})
+
+local bar = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Color3.fromRGB(25, 18, 40),
+    BorderSizePixel = 0, Parent = main
+})
+new("UICorner", {CornerRadius = UDim.new(0, 10), Parent = bar})
+new("TextLabel", {
+    Size = UDim2.new(1, -70, 1, 0), Position = UDim2.fromOffset(12, 0),
+    BackgroundTransparency = 1, Text = "X Scripts SAB",
+    TextColor3 = Color3.fromRGB(180, 130, 255), Font = Enum.Font.GothamBold,
+    TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, Parent = bar
+})
+
+local minBtn = new("TextButton", {
+    Size = UDim2.fromOffset(26, 26), Position = UDim2.new(1, -62, 0, 5),
+    BackgroundColor3 = Color3.fromRGB(70, 45, 130), Text = "-",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 16, Parent = bar
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = minBtn})
+
+local closeBtn = new("TextButton", {
+    Size = UDim2.fromOffset(26, 26), Position = UDim2.new(1, -32, 0, 5),
+    BackgroundColor3 = Color3.fromRGB(150, 40, 40), Text = "X",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 12, Parent = bar
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = closeBtn})
+closeBtn.Activated:Connect(function() screen:Destroy() end)
+
+local contentFrame = new("Frame", {
+    Name = "Content", Size = UDim2.new(1, -16, 1, -44),
+    Position = UDim2.fromOffset(8, 40), BackgroundTransparency = 1, Parent = main
+})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), Parent = contentFrame})
+
+local minimized = false
+minBtn.Activated:Connect(function()
+    minimized = not minimized
+    contentFrame.Visible = not minimized
+    main.Size = minimized and UDim2.fromOffset(300, 36) or UDim2.fromOffset(300, 600)
+    minBtn.Text = minimized and "+" or "-"
+end)
+
+local drag, dS, mS
+bar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag = true; dS = inp.Position; mS = main.Position
+    end
+end)
+UIS.InputChanged:Connect(function(inp)
+    if drag and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = inp.Position - dS
+        main.Position = UDim2.new(mS.X.Scale, mS.X.Offset + d.X, mS.Y.Scale, mS.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
+end)
+
+local statusLbl = new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+    Text = "Trade CLOSED", TextColor3 = Color3.fromRGB(255, 75, 75),
+    Font = Enum.Font.GothamBold, TextSize = 12, LayoutOrder = 1, Parent = contentFrame
+})
+
+local searchBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Color3.fromRGB(28, 25, 42),
+    BorderSizePixel = 0, PlaceholderText = "  Search brainrot...",
+    PlaceholderColor3 = Color3.fromRGB(90, 80, 120), Text = "",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.Gotham, TextSize = 12,
+    ClearTextOnFocus = false, LayoutOrder = 2, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = searchBox})
+
+local bScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 155), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(80, 50, 120),
+    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    LayoutOrder = 3, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = bScroll})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), Parent = bScroll})
+new("UIPadding", {
+    PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3),
+    PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 3), Parent = bScroll
+})
+
+for i, d in ipairs(brainrotList) do
+    local rc = RaritiesData[d.Rarity] and RaritiesData[d.Rarity].Color or Color3.new(1, 1, 1)
+    local btn = new("TextButton", {
+        Name = d.Name, Size = UDim2.new(1, 0, 0, 22),
+        BackgroundColor3 = Color3.fromRGB(28, 25, 42), BorderSizePixel = 0,
+        Text = "  " .. d.Display, TextColor3 = rc,
+        Font = Enum.Font.GothamMedium, TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        LayoutOrder = i, AutoButtonColor = false, Parent = bScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    new("TextLabel", {
+        Size = UDim2.new(0, 70, 1, 0), Position = UDim2.new(1, -74, 0, 0),
+        BackgroundTransparency = 1, Text = d.Rarity, TextColor3 = rc,
+        Font = Enum.Font.Gotham, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Right, Parent = btn
+    })
+    btn.Activated:Connect(function()
+        if sel.brainrot and bBtns[sel.brainrot] then
+            bBtns[sel.brainrot].BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+        end
+        sel.brainrot = d.Name
+        btn.BackgroundColor3 = Color3.fromRGB(45, 35, 65)
+        contentFrame.SelLbl.Text = d.Display
+        contentFrame.SelLbl.TextColor3 = rc
+    end)
+    bBtns[d.Name] = btn
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local q = searchBox.Text:lower()
+    for _, d in ipairs(brainrotList) do
+        local b = bBtns[d.Name]
+        if b then b.Visible = q == "" or d.Name:lower():find(q, 1, true) ~= nil end
+    end
+end)
+
+new("TextLabel", {
+    Name = "SelLbl", Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+    Text = "None selected", TextColor3 = Color3.fromRGB(130, 120, 160),
+    Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 4, Parent = contentFrame
+})
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1, Text = "MUTATION",
+    TextColor3 = Color3.fromRGB(100, 90, 140), Font = Enum.Font.GothamBold,
+    TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 5, Parent = contentFrame
+})
+
+local mScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 2,
+    AutomaticCanvasSize = Enum.AutomaticSize.X,
+    CanvasSize = UDim2.new(0, 0, 0, 0), LayoutOrder = 6, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = mScroll})
+new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), Parent = mScroll})
+new("UIPadding", {PaddingLeft = UDim.new(0, 3), PaddingTop = UDim.new(0, 2), Parent = mScroll})
+
+for i, name in ipairs(mutList) do
+    local md = MutationsData[name]
+    local mc = name == "Normal" and Color3.fromRGB(170, 170, 170) or (md and md.MainColor or Color3.new(1, 1, 1))
+    local btn = new("TextButton", {
+        Name = name, Size = UDim2.new(0, 68, 0, 24),
+        BackgroundColor3 = name == "Normal" and Color3.fromRGB(45, 35, 65) or Color3.fromRGB(28, 25, 42),
+        BorderSizePixel = 0, Text = name == "Normal" and "Normal" or (md and md.DisplayText or name),
+        TextColor3 = mc, Font = Enum.Font.GothamMedium, TextSize = 10,
+        LayoutOrder = i, AutoButtonColor = false, Parent = mScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    btn.Activated:Connect(function()
+        if mBtns[sel.mutation] then
+            mBtns[sel.mutation].BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+        end
+        sel.mutation = name
+        btn.BackgroundColor3 = Color3.fromRGB(45, 35, 65)
+    end)
+    mBtns[name] = btn
+end
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1, Text = "TRAITS",
+    TextColor3 = Color3.fromRGB(100, 90, 140), Font = Enum.Font.GothamBold,
+    TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 7, Parent = contentFrame
+})
+
+local tScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 2,
+    AutomaticCanvasSize = Enum.AutomaticSize.X,
+    CanvasSize = UDim2.new(0, 0, 0, 0), LayoutOrder = 8, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = tScroll})
+new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), Parent = tScroll})
+new("UIPadding", {PaddingLeft = UDim.new(0, 3), PaddingTop = UDim.new(0, 2), Parent = tScroll})
+
+for i, name in ipairs(traitList) do
+    local td = TraitsData[name]
+    local tc = td and td.Color or Color3.new(1, 1, 1)
+    local btn = new("TextButton", {
+        Size = UDim2.new(0, 78, 0, 24), BackgroundColor3 = Color3.fromRGB(28, 25, 42),
+        BorderSizePixel = 0, Text = name, TextColor3 = tc,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        LayoutOrder = i, AutoButtonColor = false, Parent = tScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    btn.Activated:Connect(function()
+        if sel.traits[name] then
+            sel.traits[name] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+        else
+            sel.traits[name] = true
+            btn.BackgroundColor3 = Color3.fromRGB(30, 50, 35)
+        end
+    end)
+end
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1, Text = "TARGET SIDE",
+    TextColor3 = Color3.fromRGB(100, 90, 140), Font = Enum.Font.GothamBold,
+    TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 9, Parent = contentFrame
+})
+
+local sideFrame = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, LayoutOrder = 10, Parent = contentFrame
+})
+local yourBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(28, 25, 42),
+    Text = "Your Offer", TextColor3 = Color3.fromRGB(140, 130, 170),
+    Font = Enum.Font.GothamMedium, TextSize = 11, AutoButtonColor = false, Parent = sideFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 5), Parent = yourBtn})
+local otherBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(45, 35, 65), Text = "Other's Offer",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamMedium, TextSize = 11,
+    AutoButtonColor = false, Parent = sideFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 5), Parent = otherBtn})
+
+yourBtn.Activated:Connect(function()
+    sel.side = "Your"
+    yourBtn.BackgroundColor3 = Color3.fromRGB(45, 35, 65)
+    yourBtn.TextColor3 = Color3.new(1, 1, 1)
+    otherBtn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+    otherBtn.TextColor3 = Color3.fromRGB(140, 130, 170)
+end)
+otherBtn.Activated:Connect(function()
+    sel.side = "Other"
+    otherBtn.BackgroundColor3 = Color3.fromRGB(45, 35, 65)
+    otherBtn.TextColor3 = Color3.new(1, 1, 1)
+    yourBtn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+    yourBtn.TextColor3 = Color3.fromRGB(140, 130, 170)
+end)
+
+local addBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = Color3.fromRGB(55, 30, 110),
+    Text = "ADD TO TRADE", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 13, LayoutOrder = 11, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = addBtn})
+
+local clearBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Color3.fromRGB(130, 35, 35),
+    Text = "CLEAR ALL VISUAL", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 12, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = clearBtn})
+
+local lastChangeTime = 0
+local TRADE_COOLDOWN = 5
+local cooldownThread = nil
+local updateCooldownTimer
+
+local exampleTradeActive = false
+local exampleConnections = {}
+local exampleState = {yourReady = false, otherReady = false, yourAccepted = false, otherAccepted = false}
+local closeExampleTrade
+
+local function resetExampleState()
+    exampleState = {yourReady = false, otherReady = false, yourAccepted = false, otherAccepted = false}
+    for _, conn in ipairs(exampleConnections) do
+        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+    end
+    exampleConnections = {}
+end
+
+local function triggerCooldown()
+    lastChangeTime = tick()
+    if updateCooldownTimer then updateCooldownTimer() end
+end
+
+local function isCooldownActive()
+    return tick() < lastChangeTime + TRADE_COOLDOWN
+end
+
+local function updateTradeButtons()
+    local tlt = pgui:FindFirstChild("TradeLiveTrade")
+    if not tlt then return end
+    tlt = tlt:FindFirstChild("TradeLiveTrade")
+    if not tlt then return end
+
+    local otherSide = tlt:FindFirstChild("Other")
+    local yourSide = tlt:FindFirstChild("Your")
+    if not otherSide or not yourSide then return end
+
+    local readyBtn = otherSide:FindFirstChild("ReadyButton")
+    local yourReadyFrame = yourSide:FindFirstChild("Ready")
+    local otherReadyFrame = otherSide:FindFirstChild("Ready")
+    local timerLbl = otherSide:FindFirstChild("Timer")
+
+    local bothReady = exampleState.yourReady and exampleState.otherReady
+    local bothAccepted = exampleState.yourAccepted and exampleState.otherAccepted
+    local hasOffer = #visuals > 0
+
+    if readyBtn then
+        local txt = readyBtn:FindFirstChild("Txt")
+        if txt then
+            txt.Text = bothReady and "ACCEPT" or "READY"
+        end
+        local canClick = not isCooldownActive()
+        if bothReady and exampleState.yourAccepted then canClick = false end
+        if not bothReady and (not hasOffer or exampleState.yourReady) then canClick = false end
+        readyBtn.BackgroundColor3 = canClick and Color3.fromRGB(81, 158, 86) or Color3.fromRGB(112, 112, 112)
+    end
+
+    if yourReadyFrame then
+        if exampleState.yourAccepted then
+            yourReadyFrame.Visible = true
+            local lbl = yourReadyFrame:FindFirstChild("Label")
+            if lbl then lbl.Text = "Confirmed!" end
+        elseif bothReady then
+            yourReadyFrame.Visible = false
+        elseif exampleState.yourReady then
+            yourReadyFrame.Visible = true
+            local lbl = yourReadyFrame:FindFirstChild("Label")
+            if lbl then lbl.Text = "Ready!" end
+        else
+            yourReadyFrame.Visible = false
+        end
+    end
+
+    if otherReadyFrame then
+        if exampleState.otherAccepted then
+            otherReadyFrame.Visible = true
+            local lbl = otherReadyFrame:FindFirstChild("Label")
+            if lbl then lbl.Text = "Confirmed!" end
+        elseif bothReady then
+            otherReadyFrame.Visible = false
+        elseif exampleState.otherReady then
+            otherReadyFrame.Visible = true
+            local lbl = otherReadyFrame:FindFirstChild("Label")
+            if lbl then lbl.Text = "Ready!" end
+        else
+            otherReadyFrame.Visible = false
+        end
+    end
+
+    if bothAccepted then
+        if cooldownThread then pcall(task.cancel, cooldownThread); cooldownThread = nil end
+        if timerLbl then timerLbl.Text = "Processing..." end
+        if readyBtn then readyBtn.BackgroundColor3 = Color3.fromRGB(112, 112, 112) end
+        task.delay(5, function()
+            if exampleTradeActive then
+                closeExampleTrade()
+            end
+        end)
+    end
+end
+
+local exampleBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(30, 80, 130),
+    Text = "CREATE EXAMPLE TRADE", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 13, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = exampleBtn})
+
+local partnerAcceptBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(25, 90, 60),
+    Text = "PARTNER READY / ACCEPT", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 14, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = partnerAcceptBtn})
+partnerAcceptBtn.Visible = false
+
+partnerAcceptBtn.Activated:Connect(function()
+    if not exampleTradeActive then return end
+    local bothReady = exampleState.yourReady and exampleState.otherReady
+    if bothReady and not exampleState.otherAccepted then
+        exampleState.otherAccepted = true
+        triggerCooldown()
+    elseif not exampleState.otherReady then
+        exampleState.otherReady = true
+        triggerCooldown()
+    else
+        return
+    end
+    updateTradeButtons()
+end)
+
+local function openExampleTrade()
+    local tradeScreenGui = pgui:FindFirstChild("TradeLiveTrade")
+    if not tradeScreenGui then return end
+    local tlt = tradeScreenGui:FindFirstChild("TradeLiveTrade")
+    if not tlt then return end
+
+    resetExampleState()
+
+    local others = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then table.insert(others, p) end
+    end
+    local fakePartner = #others > 0 and others[math.random(1, #others)] or nil
+    local partnerId = fakePartner and fakePartner.UserId or 1
+    local partnerName = fakePartner and fakePartner.Name or "TestPlayer"
+
+    tradeScreenGui.Enabled = true
+    tlt.Visible = true
+    tlt.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+    local yourSide = tlt:FindFirstChild("Your")
+    if yourSide then
+        local uname = yourSide:FindFirstChild("Username")
+        if uname then uname.Text = "Your Offer" end
+        local pimg = yourSide:FindFirstChild("PlayerImage")
+        if pimg then
+            local hs = pimg:FindFirstChild("Headshot")
+            if hs then
+                hs.Image = ("rbxthumb://type=AvatarHeadShot&id=%s&w=100&h=100"):format(player.UserId)
+            end
+        end
+        local bs = yourSide:FindFirstChild("BaseSlots")
+        if bs then bs.Text = "0/10"; bs.TextColor3 = Color3.new(1, 1, 1) end
+        local r = yourSide:FindFirstChild("Ready")
+        if r then r.Visible = false end
+    end
+
+    local otherSide = tlt:FindFirstChild("Other")
+    if otherSide then
+        local uname = otherSide:FindFirstChild("Username")
+        if uname then uname.Text = ("@%s's Offer"):format(partnerName) end
+        local pimg = otherSide:FindFirstChild("PlayerImage")
+        if pimg then
+            local hs = pimg:FindFirstChild("Headshot")
+            if hs then
+                hs.Image = ("rbxthumb://type=AvatarHeadShot&id=%s&w=100&h=100"):format(partnerId)
+            end
+        end
+        local bs = otherSide:FindFirstChild("BaseSlots")
+        if bs then bs.Text = "0/10"; bs.TextColor3 = Color3.new(1, 1, 1) end
+        local timer = otherSide:FindFirstChild("Timer")
+        if timer then timer.Text = "" end
+        local ready = otherSide:FindFirstChild("Ready")
+        if ready then ready.Visible = false end
+
+        local readyButton = otherSide:FindFirstChild("ReadyButton")
+        if readyButton then
+            local txt = readyButton:FindFirstChild("Txt")
+            if txt then txt.Text = "READY" end
+            readyButton.BackgroundColor3 = Color3.fromRGB(112, 112, 112)
+            table.insert(exampleConnections, readyButton.Activated:Connect(function()
+                if isCooldownActive() then return end
+                local bothReady = exampleState.yourReady and exampleState.otherReady
+                if bothReady and not exampleState.yourAccepted then
+                    exampleState.yourAccepted = true
+                    triggerCooldown()
+                elseif not bothReady and not exampleState.yourReady and #visuals > 0 then
+                    exampleState.yourReady = true
+                    triggerCooldown()
+                else
+                    return
+                end
+                updateTradeButtons()
+            end))
+        end
+
+        local cancelButton = otherSide:FindFirstChild("Cancel")
+        if cancelButton then
+            table.insert(exampleConnections, cancelButton.Activated:Connect(function()
+                closeExampleTrade()
+            end))
+        end
+    end
+
+    local header = tlt:FindFirstChild("Header")
+    if header then
+        local closeX = header:FindFirstChild("Close")
+        if closeX then
+            table.insert(exampleConnections, closeX.Activated:Connect(function()
+                closeExampleTrade()
+            end))
+        end
+    end
+
+    exampleTradeActive = true
+    partnerAcceptBtn.Visible = true
+    exampleBtn.Text = "CLOSE EXAMPLE TRADE"
+    exampleBtn.BackgroundColor3 = Color3.fromRGB(130, 60, 30)
+    updateTradeButtons()
+end
+
+closeExampleTrade = function()
+    local tradeScreenGui = pgui:FindFirstChild("TradeLiveTrade")
+    if not tradeScreenGui then return end
+    local tlt = tradeScreenGui:FindFirstChild("TradeLiveTrade")
+    if not tlt then return end
+
+    resetExampleState()
+    lastChangeTime = 0
+    if cooldownThread then pcall(task.cancel, cooldownThread); cooldownThread = nil end
+
+    for _, v in ipairs(visuals) do
+        if v.frame and v.frame.Parent then v.frame:Destroy() end
+    end
+    visuals = {}
+    visualCount = 0
+    baseSlotsOriginal = {}
+
+    tlt.Visible = false
+    tlt.Position = UDim2.new(0.5, 0, -1.5, 0)
+    tradeScreenGui.Enabled = false
+
+    exampleTradeActive = false
+    partnerAcceptBtn.Visible = false
+    exampleBtn.Text = "CREATE EXAMPLE TRADE"
+    exampleBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 130)
+end
+
+exampleBtn.Activated:Connect(function()
+    if exampleTradeActive then
+        closeExampleTrade()
+    else
+        openExampleTrade()
+    end
+end)
+
+local spawnVisualWithParams
+local getTradeGUI, getTradeScroll, saveBaseSlots, updateBaseSlots
+
+-- ========== RANDOMIZER ==========
+
+local randBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(120, 60, 20),
+    Text = "RANDOMIZER SETTINGS", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 11, LayoutOrder = 15, Parent = contentFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = randBtn})
+
+local randFrame = new("Frame", {
+    Name = "Randomizer", Size = UDim2.fromOffset(320, 520),
+    Position = UDim2.new(0, -330, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 22), BorderSizePixel = 0,
+    Visible = false, Parent = main
+})
+new("UICorner", {CornerRadius = UDim.new(0, 10), Parent = randFrame})
+new("UIStroke", {Color = Color3.fromRGB(120, 60, 20), Thickness = 1.5, Parent = randFrame})
+
+local rBar = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 32), BackgroundColor3 = Color3.fromRGB(30, 20, 12),
+    BorderSizePixel = 0, Parent = randFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 10), Parent = rBar})
+new("TextLabel", {
+    Size = UDim2.new(1, -40, 1, 0), Position = UDim2.fromOffset(10, 0),
+    BackgroundTransparency = 1, Text = "Randomizer Settings",
+    TextColor3 = Color3.fromRGB(255, 170, 80), Font = Enum.Font.GothamBold,
+    TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = rBar
+})
+local rClose = new("TextButton", {
+    Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, -28, 0, 4),
+    BackgroundColor3 = Color3.fromRGB(150, 40, 40), Text = "X",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 11, Parent = rBar
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = rClose})
+rClose.Activated:Connect(function() randFrame.Visible = false end)
+
+local rDrag, rDS, rMS
+rBar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        rDrag = true; rDS = inp.Position; rMS = randFrame.Position
+    end
+end)
+UIS.InputChanged:Connect(function(inp)
+    if rDrag and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = inp.Position - rDS
+        randFrame.Position = UDim2.new(rMS.X.Scale, rMS.X.Offset + d.X, rMS.Y.Scale, rMS.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then rDrag = false end
+end)
+
+local rContent = new("Frame", {
+    Size = UDim2.new(1, -12, 1, -38), Position = UDim2.fromOffset(6, 35),
+    BackgroundTransparency = 1, Parent = randFrame
+})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3), Parent = rContent})
+
+local kbFrame = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, LayoutOrder = 1, Parent = rContent
+})
+local keybindYourBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(40, 30, 55),
+    Text = "YOUR: [T]", TextColor3 = Color3.fromRGB(100, 200, 255),
+    Font = Enum.Font.GothamBold, TextSize = 11, Parent = kbFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = keybindYourBtn})
+local keybindOtherBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(40, 30, 55),
+    Text = "ALLY: [Y]", TextColor3 = Color3.fromRGB(255, 180, 80),
+    Font = Enum.Font.GothamBold, TextSize = 11, Parent = kbFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = keybindOtherBtn})
+
+keybindYourBtn.Activated:Connect(function()
+    waitingForKeybind = "Your"
+    keybindYourBtn.Text = "PRESS KEY..."
+    keybindYourBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 20)
+end)
+keybindOtherBtn.Activated:Connect(function()
+    waitingForKeybind = "Other"
+    keybindOtherBtn.Text = "PRESS KEY..."
+    keybindOtherBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 20)
+end)
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1,
+    Text = "READY / ACCEPT", TextColor3 = Color3.fromRGB(100, 90, 140),
+    Font = Enum.Font.GothamBold, TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1.5, Parent = rContent
+})
+local kbFrame2 = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, LayoutOrder = 1.6, Parent = rContent
+})
+local keybindReadyYourBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(30, 45, 30),
+    Text = "MY READY: [G]", TextColor3 = Color3.fromRGB(130, 255, 130),
+    Font = Enum.Font.GothamBold, TextSize = 10, Parent = kbFrame2
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = keybindReadyYourBtn})
+local keybindReadyOtherBtn = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(30, 45, 30),
+    Text = "ALLY READY: [H]", TextColor3 = Color3.fromRGB(255, 220, 130),
+    Font = Enum.Font.GothamBold, TextSize = 10, Parent = kbFrame2
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = keybindReadyOtherBtn})
+
+keybindReadyYourBtn.Activated:Connect(function()
+    waitingForKeybind = "ReadyYour"
+    keybindReadyYourBtn.Text = "PRESS KEY..."
+    keybindReadyYourBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 20)
+end)
+keybindReadyOtherBtn.Activated:Connect(function()
+    waitingForKeybind = "ReadyOther"
+    keybindReadyOtherBtn.Text = "PRESS KEY..."
+    keybindReadyOtherBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 20)
+end)
+
+local function updateRandCountLabel(section)
+    if not randCountLabels[section] then return end
+    local count = 0
+    local src = section == "brainrots" and randConfig.brainrots or section == "mutations" and randConfig.mutations or randConfig.traits
+    for _ in pairs(src) do count = count + 1 end
+    local label = section:upper()
+    randCountLabels[section].Text = label .. " (" .. count .. " selected)"
+end
+
+randCountLabels.brainrots = new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+    Text = "BRAINROTS (0 selected)", TextColor3 = Color3.fromRGB(100, 90, 140),
+    Font = Enum.Font.GothamBold, TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = rContent
+})
+
+local rSearchBox = new("TextBox", {
+    Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Color3.fromRGB(28, 25, 42),
+    BorderSizePixel = 0, PlaceholderText = "  Search brainrot...",
+    PlaceholderColor3 = Color3.fromRGB(90, 80, 120), Text = "",
+    TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.Gotham, TextSize = 11,
+    ClearTextOnFocus = false, LayoutOrder = 3, Parent = rContent
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = rSearchBox})
+
+local rBScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 140), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(120, 60, 20),
+    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    LayoutOrder = 4, Parent = rContent
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = rBScroll})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), Parent = rBScroll})
+new("UIPadding", {PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 2), PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 3), Parent = rBScroll})
+
+for i, d in ipairs(brainrotList) do
+    local rc = RaritiesData[d.Rarity] and RaritiesData[d.Rarity].Color or Color3.new(1, 1, 1)
+    local btn = new("TextButton", {
+        Name = d.Name, Size = UDim2.new(1, 0, 0, 20),
+        BackgroundColor3 = Color3.fromRGB(28, 25, 42), BorderSizePixel = 0,
+        Text = "  [ ] " .. d.Display, TextColor3 = rc,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        LayoutOrder = i, AutoButtonColor = false, Parent = rBScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    btn.Activated:Connect(function()
+        if randConfig.brainrots[d.Name] then
+            randConfig.brainrots[d.Name] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+            btn.Text = "  [ ] " .. d.Display
+        else
+            randConfig.brainrots[d.Name] = true
+            btn.BackgroundColor3 = Color3.fromRGB(40, 30, 20)
+            btn.Text = "  [X] " .. d.Display
+        end
+        updateRandCountLabel("brainrots")
+    end)
+    rBtns[d.Name] = btn
+end
+
+rSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local q = rSearchBox.Text:lower()
+    for _, d in ipairs(brainrotList) do
+        local b = rBtns[d.Name]
+        if b then b.Visible = q == "" or d.Name:lower():find(q, 1, true) ~= nil end
+    end
+end)
+
+local rBBtnFrame = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = 5, Parent = rContent
+})
+local rSelectAllB = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(35, 55, 35),
+    Text = "Select All", TextColor3 = Color3.fromRGB(150, 220, 150),
+    Font = Enum.Font.GothamMedium, TextSize = 10, Parent = rBBtnFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = rSelectAllB})
+local rClearB = new("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0), Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(55, 30, 30), Text = "Clear",
+    TextColor3 = Color3.fromRGB(220, 150, 150), Font = Enum.Font.GothamMedium,
+    TextSize = 10, Parent = rBBtnFrame
+})
+new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = rClearB})
+
+rSelectAllB.Activated:Connect(function()
+    local q = rSearchBox.Text:lower()
+    for _, d in ipairs(brainrotList) do
+        local visible = q == "" or d.Name:lower():find(q, 1, true) ~= nil
+        if visible then
+            randConfig.brainrots[d.Name] = true
+            if rBtns[d.Name] then
+                rBtns[d.Name].BackgroundColor3 = Color3.fromRGB(40, 30, 20)
+                rBtns[d.Name].Text = "  [X] " .. d.Display
+            end
+        end
+    end
+    updateRandCountLabel("brainrots")
+end)
+rClearB.Activated:Connect(function()
+    for name, _ in pairs(randConfig.brainrots) do
+        randConfig.brainrots[name] = nil
+        local d = AnimalsData[name]
+        local display = d and d.DisplayName or name
+        if rBtns[name] then
+            rBtns[name].BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+            rBtns[name].Text = "  [ ] " .. display
+        end
+    end
+    updateRandCountLabel("brainrots")
+end)
+
+randCountLabels.mutations = new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+    Text = "MUTATIONS (0 selected)", TextColor3 = Color3.fromRGB(100, 90, 140),
+    Font = Enum.Font.GothamBold, TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 6, Parent = rContent
+})
+
+local rMScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 3,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0), LayoutOrder = 7, Parent = rContent
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = rMScroll})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), Parent = rMScroll})
+new("UIPadding", {PaddingLeft = UDim.new(0, 3), PaddingTop = UDim.new(0, 2), PaddingRight = UDim.new(0, 3), Parent = rMScroll})
+
+for i, name in ipairs(mutList) do
+    local md = MutationsData[name]
+    local mc = name == "Normal" and Color3.fromRGB(170, 170, 170) or (md and md.MainColor or Color3.new(1, 1, 1))
+    local displayName = name == "Normal" and "Normal" or (md and md.DisplayText or name)
+    local btn = new("TextButton", {
+        Name = name, Size = UDim2.new(1, 0, 0, 20),
+        BackgroundColor3 = Color3.fromRGB(28, 25, 42), BorderSizePixel = 0,
+        Text = "  [ ] " .. displayName, TextColor3 = mc,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = i, AutoButtonColor = false, Parent = rMScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    btn.Activated:Connect(function()
+        if randConfig.mutations[name] then
+            randConfig.mutations[name] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+            btn.Text = "  [ ] " .. displayName
+        else
+            randConfig.mutations[name] = true
+            btn.BackgroundColor3 = Color3.fromRGB(40, 30, 20)
+            btn.Text = "  [X] " .. displayName
+        end
+        updateRandCountLabel("mutations")
+    end)
+    rMBtns[name] = btn
+end
+
+randCountLabels.traits = new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+    Text = "TRAITS (0 selected)", TextColor3 = Color3.fromRGB(100, 90, 140),
+    Font = Enum.Font.GothamBold, TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 8, Parent = rContent
+})
+
+local rTScroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = Color3.fromRGB(20, 18, 30),
+    BorderSizePixel = 0, ScrollBarThickness = 3,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0), LayoutOrder = 9, Parent = rContent
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = rTScroll})
+new("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1), Parent = rTScroll})
+new("UIPadding", {PaddingLeft = UDim.new(0, 3), PaddingTop = UDim.new(0, 2), PaddingRight = UDim.new(0, 3), Parent = rTScroll})
+
+for i, name in ipairs(traitList) do
+    local td = TraitsData[name]
+    local tc = td and td.Color or Color3.new(1, 1, 1)
+    local btn = new("TextButton", {
+        Name = name, Size = UDim2.new(1, 0, 0, 20),
+        BackgroundColor3 = Color3.fromRGB(28, 25, 42), BorderSizePixel = 0,
+        Text = "  [ ] " .. name, TextColor3 = tc,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = i, AutoButtonColor = false, Parent = rTScroll
+    })
+    new("UICorner", {CornerRadius = UDim.new(0, 4), Parent = btn})
+    btn.Activated:Connect(function()
+        if randConfig.traits[name] then
+            randConfig.traits[name] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(28, 25, 42)
+            btn.Text = "  [ ] " .. name
+        else
+            randConfig.traits[name] = true
+            btn.BackgroundColor3 = Color3.fromRGB(30, 45, 35)
+            btn.Text = "  [X] " .. name
+        end
+        updateRandCountLabel("traits")
+    end)
+    rTBtns[name] = btn
+end
+
+local spawnRandBtn = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(120, 60, 20),
+    Text = "SPAWN RANDOM (BOTH SIDES)", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 12, LayoutOrder = 10, Parent = rContent
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = spawnRandBtn})
+
+updateCooldownTimer = function()
+    if cooldownThread then pcall(task.cancel, cooldownThread); cooldownThread = nil end
+    cooldownThread = task.spawn(function()
+        local tlt = getTradeGUI()
+        if not tlt then return end
+        local otherSide = tlt:FindFirstChild("Other")
+        if not otherSide then return end
+        local timerLbl = otherSide:FindFirstChild("Timer")
+        local readyBtn = otherSide:FindFirstChild("ReadyButton")
+
+        while true do
+            local remaining = (lastChangeTime + TRADE_COOLDOWN) - tick()
+            if remaining <= 0 then
+                if timerLbl then timerLbl.Text = "" end
+                if readyBtn then readyBtn.BackgroundColor3 = Color3.fromRGB(81, 158, 86) end
+                if exampleTradeActive then updateTradeButtons() end
+                break
+            end
+            local display = math.floor(remaining * 10) / 10
+            if timerLbl then timerLbl.Text = string.format("\226\143\176%.1fs Left", display) end
+            if readyBtn then readyBtn.BackgroundColor3 = Color3.fromRGB(112, 112, 112) end
+            task.wait(0.1)
+        end
+    end)
+end
+
+local function spawnRandomOnSide(sideName)
+    local now = tick()
+    if now < lastChangeTime + TRADE_COOLDOWN then return end
+
+    local bList = {}
+    for name in pairs(randConfig.brainrots) do table.insert(bList, name) end
+    if #bList == 0 then return end
+
+    local mList = {}
+    for name in pairs(randConfig.mutations) do table.insert(mList, name) end
+    if #mList == 0 then table.insert(mList, "Normal") end
+
+    local tList = {}
+    for name in pairs(randConfig.traits) do table.insert(tList, name) end
+
+    local picked = {}
+    for _, t in ipairs(tList) do
+        if math.random() > 0.5 then table.insert(picked, t) end
+    end
+
+    spawnVisualWithParams(sideName, bList[math.random(#bList)], mList[math.random(#mList)], picked)
+    lastChangeTime = tick()
+    updateCooldownTimer()
+end
+
+spawnRandBtn.Activated:Connect(function()
+    spawnRandomOnSide("Your")
+    spawnRandomOnSide("Other")
+end)
+
+randBtn.Activated:Connect(function()
+    randFrame.Visible = not randFrame.Visible
+end)
+
+-- ========== END RANDOMIZER ==========
+
+getTradeGUI = function()
+    local tg = pgui:FindFirstChild("TradeLiveTrade")
+    if not tg then return nil end
+    return tg:FindFirstChild("TradeLiveTrade")
+end
+
+getTradeScroll = function(sideName)
+    local tlt = getTradeGUI()
+    if not tlt or not tlt.Visible then return nil, nil end
+    local side = tlt:FindFirstChild(sideName)
+    if not side then return nil, nil end
+    local scroll = side:FindFirstChild("ScrollingFrame")
+    if not scroll then return nil, nil end
+    return scroll, scroll:FindFirstChild("Template")
+end
+
+saveBaseSlots = function(sideName)
+    local tlt = getTradeGUI()
+    if not tlt then return end
+    local side = tlt:FindFirstChild(sideName)
+    if not side then return end
+    local bs = side:FindFirstChild("BaseSlots")
+    if bs and not baseSlotsOriginal[sideName] then
+        baseSlotsOriginal[sideName] = bs.Text
+    end
+end
+
+updateBaseSlots = function(sideName, delta)
+    local tlt = getTradeGUI()
+    if not tlt then return end
+    local side = tlt:FindFirstChild(sideName)
+    if not side then return end
+    local bs = side:FindFirstChild("BaseSlots")
+    if not bs then return end
+
+    local current, max = bs.Text:match("(%d+)/(%d+)")
+    if current and max then
+        local newVal = tonumber(current) + delta
+        if newVal < 0 then newVal = 0 end
+        bs.Text = tostring(newVal) .. "/" .. max
+        if newVal > tonumber(max) then
+            bs.TextColor3 = Color3.fromRGB(255, 70, 70)
+        else
+            bs.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end
+    end
+end
+
+spawnVisualWithParams = function(sideName, brainrotName, mutationName, traitsList)
+    local scroll, tmpl = getTradeScroll(sideName)
+    if not scroll or not tmpl then return end
+    saveBaseSlots(sideName)
+
+    local item = tmpl:Clone()
+    item.Name = "Visual_" .. brainrotName .. "_" .. tostring(math.floor(tick() * 1000))
+    item.Visible = true
+    item.LayoutOrder = -900 + #visuals
+
+    local spacer = item:FindFirstChild("Spacer")
+    if not spacer then item:Destroy() return end
+
+    local title = spacer:FindFirstChild("Title")
+    if title then
+        local ad = AnimalsData[brainrotName]
+        title.Text = ad and ad.DisplayName or brainrotName
+    end
+
+    local mut = mutationName ~= "Normal" and mutationName or nil
+
+    local cash = spacer:FindFirstChild("Cash")
+    if cash then
+        pcall(function()
+            local gen = AnimalsShared:GetGeneration(brainrotName, mut, traitsList)
+            if gen then
+                cash.Text = "$" .. NumberUtils:ToString(gen) .. "/s"
+            end
+        end)
+    end
+
+    local vf = spacer:FindFirstChild("ViewportFrame")
+    if vf then
+        for _, c in ipairs(vf:GetChildren()) do
+            if not c:IsA("UICorner") and not c:IsA("UIStroke") then c:Destroy() end
+        end
+        pcall(function()
+            AnimalsShared:AttachOnViewportWithOptimizations(brainrotName, vf, nil, mut)
+        end)
+
+        if mut and MutationsData[mut] then
+            local mutData = MutationsData[mut]
+            new("ImageLabel", {
+                Name = "MutationIcon",
+                Size = UDim2.fromOffset(22, 22),
+                Position = UDim2.new(1, -22, 1, -22),
+                BackgroundColor3 = Color3.fromRGB(20, 20, 30),
+                BackgroundTransparency = 0.3,
+                Image = mutData.Icon or "",
+                ScaleType = Enum.ScaleType.Fit,
+                ZIndex = 10,
+                Parent = vf
+            })
+            new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = vf.MutationIcon})
+        end
+    end
+
+    local traitsFrame = spacer:FindFirstChild("Traits")
+    if traitsFrame then
+        local trTmpl = traitsFrame:FindFirstChild("Template")
+        if trTmpl then
+            for _, trName in ipairs(traitsList) do
+                local td = TraitsData[trName]
+                if td then
+                    local ti = trTmpl:Clone()
+                    ti.Name = trName
+                    ti.Visible = true
+                    ti.Image = td.Icon
+                    ti.Parent = traitsFrame
+                end
+            end
+        end
+    end
+
+    local offered = false
+    local stroke = spacer:FindFirstChild("UIStroke")
+    spacer.BackgroundColor3 = Color3.fromRGB(35, 45, 50)
+    if stroke then stroke.Color = Color3.fromRGB(0, 0, 0) end
+
+    spacer.Activated:Connect(function()
+        offered = not offered
+        if offered then
+            spacer.BackgroundColor3 = Color3.fromRGB(15, 50, 15)
+            if stroke then stroke.Color = Color3.fromRGB(0, 255, 0) end
+        else
+            spacer.BackgroundColor3 = Color3.fromRGB(35, 45, 50)
+            if stroke then stroke.Color = Color3.fromRGB(0, 0, 0) end
+        end
+    end)
+
+    item.Parent = scroll
+    table.insert(visuals, {frame = item, side = sideName, offered = false})
+    visualCount = visualCount + 1
+    updateBaseSlots(sideName, 1)
+end
+
+local function addVisual()
+    if not sel.brainrot then return end
+    local now = tick()
+    if now < lastChangeTime + TRADE_COOLDOWN then return end
+    local trArr = {}
+    for t in pairs(sel.traits) do table.insert(trArr, t) end
+    spawnVisualWithParams(sel.side, sel.brainrot, sel.mutation, trArr)
+    lastChangeTime = tick()
+    updateCooldownTimer()
+end
+
+addBtn.Activated:Connect(addVisual)
+
+clearBtn.Activated:Connect(function()
+    local sideCounts = {}
+    for _, v in ipairs(visuals) do
+        sideCounts[v.side] = (sideCounts[v.side] or 0) + 1
+        if v.frame and v.frame.Parent then v.frame:Destroy() end
+    end
+    for sideName, original in pairs(baseSlotsOriginal) do
+        local tlt = getTradeGUI()
+        if tlt then
+            local side = tlt:FindFirstChild(sideName)
+            if side then
+                local bs = side:FindFirstChild("BaseSlots")
+                if bs then
+                    bs.Text = original
+                    bs.TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+            end
+        end
+    end
+    visuals = {}
+    visualCount = 0
+    baseSlotsOriginal = {}
+end)
+
+task.spawn(function()
+    while screen and screen.Parent do
+        local tlt = getTradeGUI()
+        local open = tlt and tlt.Visible or false
+        statusLbl.Text = open and "Trade OPEN" or "Trade CLOSED"
+        statusLbl.TextColor3 = open and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 75, 75)
+        task.wait(0.5)
+    end
+end)
+
+local function doYourReadyAccept()
+    if not exampleTradeActive then return end
+    if isCooldownActive() then return end
+    local bothReady = exampleState.yourReady and exampleState.otherReady
+    if bothReady and not exampleState.yourAccepted then
+        exampleState.yourAccepted = true
+        triggerCooldown()
+    elseif not bothReady and not exampleState.yourReady and #visuals > 0 then
+        exampleState.yourReady = true
+        triggerCooldown()
+    else
+        return
+    end
+    updateTradeButtons()
+end
+
+local function doOtherReadyAccept()
+    if not exampleTradeActive then return end
+    local bothReady = exampleState.yourReady and exampleState.otherReady
+    if bothReady and not exampleState.otherAccepted then
+        exampleState.otherAccepted = true
+        triggerCooldown()
+    elseif not exampleState.otherReady then
+        exampleState.otherReady = true
+        triggerCooldown()
+    else
+        return
+    end
+    updateTradeButtons()
+end
+
+UIS.InputBegan:Connect(function(inp, processed)
+    if waitingForKeybind and inp.UserInputType == Enum.UserInputType.Keyboard then
+        local which = waitingForKeybind
+        waitingForKeybind = nil
+        if which == "Your" then
+            randConfig.keybindYour = inp.KeyCode
+            keybindYourBtn.Text = "YOUR: [" .. inp.KeyCode.Name .. "]"
+            keybindYourBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 55)
+        elseif which == "Other" then
+            randConfig.keybindOther = inp.KeyCode
+            keybindOtherBtn.Text = "ALLY: [" .. inp.KeyCode.Name .. "]"
+            keybindOtherBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 55)
+        elseif which == "ReadyYour" then
+            randConfig.keybindReadyYour = inp.KeyCode
+            keybindReadyYourBtn.Text = "MY READY: [" .. inp.KeyCode.Name .. "]"
+            keybindReadyYourBtn.BackgroundColor3 = Color3.fromRGB(30, 45, 30)
+        elseif which == "ReadyOther" then
+            randConfig.keybindReadyOther = inp.KeyCode
+            keybindReadyOtherBtn.Text = "ALLY READY: [" .. inp.KeyCode.Name .. "]"
+            keybindReadyOtherBtn.BackgroundColor3 = Color3.fromRGB(30, 45, 30)
+        end
+        return
+    end
+    if processed then return end
+    if inp.KeyCode == Enum.KeyCode.RightShift then
+        main.Visible = not main.Visible
+    end
+    if inp.KeyCode == randConfig.keybindYour then
+        spawnRandomOnSide("Your")
+    end
+    if inp.KeyCode == randConfig.keybindOther then
+        spawnRandomOnSide("Other")
+    end
+    if inp.KeyCode == randConfig.keybindReadyYour then
+        doYourReadyAccept()
+    end
+    if inp.KeyCode == randConfig.keybindReadyOther then
+        doOtherReadyAccept()
+    end
+end)
+
+return "X Scripts SAB loaded"
